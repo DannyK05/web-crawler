@@ -1,36 +1,62 @@
 import requests as r
 
+
 base = "https://github.com"
 domain = 'github.com'
-page_count = 20
-normalized_href = ["https://github.com/DannyK05"]
-known_href = set()
+remaining_pages = 20
+frontier = ["https://github.com/DannyK05"]
+known_href = set("https://github.com/DannyK05")
 
-def url_parser(url:str, base:str):
-    if url[0] == "/":
-        return base + url
-    elif url[0:3] == "http":
-        return url
+def url_parser(href: str, base: str):
+    """
+    (str, str) -> str | None
+
+    Normalizes an href into an absolute URL when possible.
+
+    Root-relative URLs are combined with the base URL.
+    Absolute HTTP/HTTPS URLs are returned unchanged.
+    Unsupported or unrecognized href values return None.
+    """
+
+    if href[0] == "/":
+        return base + href
+    elif href[0:3] == "http":
+        return href
     return None
     
     
 
 def valid_url(url:str, domain:str):
+    """
+    (str, str) => bool
+
+    Checks if a url is valid within the domain of crawler
+
+    """
     url_sections = url.split("/")
-    # print(url_sections)
     if url_sections[2] == domain:
         return True
     else:
         return False
 
 
-def crawl (url:str,normalized_href:list[str]):
+def crawl (url:str,frontier:list[str]):
+    global remaining_pages
     hrefs:set[str] = set()
-
     response = r.get(url)
     html_body = response.text
+    
+    if (not response.ok):
+        remaining_pages +=1
+        return
 
+    if ("html" not in response.headers["Content-Type"]):
+        remaining_pages +=1
+        return
+
+    # print(parser.feed(html_body))
     i = 0
+    # parse the html_body to extract href values
     while(i < len(html_body)-4):
         href_char = ""
         j = i
@@ -44,24 +70,21 @@ def crawl (url:str,normalized_href:list[str]):
 
         i += (j-i) + 1
 
-    # print(list(hrefs))
-
-
+   #parse the href to normalize it and convert them to valid hrefs
     for href in list(hrefs):
         parsed_url = url_parser(href, base)
         if parsed_url and  valid_url(parsed_url, domain):
             if parsed_url not in known_href:
-                normalized_href.append(parsed_url)
+                frontier.append(parsed_url)
                 known_href.add(parsed_url)
                 
 
+# Crawling loop
+while (len(frontier) > 0 and remaining_pages > 0):
+    print(remaining_pages)
+    next_href = frontier.pop()
+    crawl(next_href,frontier)
+    remaining_pages -= 1
+ 
 
-while (len(normalized_href) > 0 and page_count > 0):
-    print(page_count)
-    next_href = normalized_href.pop()
-    crawl(next_href,normalized_href)
-    page_count -= 1
-
-    
-
-print(normalized_href)
+print(frontier)
