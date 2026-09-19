@@ -1,11 +1,15 @@
 import requests as r
+from bs4 import BeautifulSoup
+from utils.index import tokenize
 
-
+query= "Who is DannyK05"
 base = "https://github.com"
 domain = 'github.com'
+index = {}
 remaining_pages = 20
 frontier = ["https://github.com/DannyK05"]
-known_href = set("https://github.com/DannyK05")
+known_href = {"https://github.com/DannyK05"}
+
 
 def url_parser(href: str, base: str):
     """
@@ -17,12 +21,15 @@ def url_parser(href: str, base: str):
     Absolute HTTP/HTTPS URLs are returned unchanged.
     Unsupported or unrecognized href values return None.
     """
-
-    if href[0] == "/":
+    
+    if len(href) == 0:
+        return None
+    elif href[0] == "/":
         return base + href
     elif href[0:3] == "http":
         return href
-    return None
+    else:
+        return None
     
     
 
@@ -39,6 +46,9 @@ def valid_url(url:str, domain:str):
     else:
         return False
 
+tokens:list[str] = tokenize(query)
+print(tokens,"tokens")
+
 
 def crawl (url:str,frontier:list[str]):
     global remaining_pages
@@ -54,23 +64,26 @@ def crawl (url:str,frontier:list[str]):
         remaining_pages +=1
         return
 
-    # print(parser.feed(html_body))
-    i = 0
-    # parse the html_body to extract href values
-    while(i < len(html_body)-4):
-        href_char = ""
-        j = i
-        if (html_body[i:i+6] == 'href="'):
-            j+=6
-            while(j < len(html_body) and html_body[j]!= '"'):
-                href_char += html_body[j]
-                j+=1 
-            if href_char.strip() != "":
-                hrefs.add(href_char)
+  # parse the html_body to extract href values
+    soup = BeautifulSoup(html_body,"html.parser")
+    title = soup.title.string
+    description = soup.select('meta[name="description"]')[0]['content']
+    website_text = soup.get_text(" ", strip=True).lower()
+  
+  
+    for token in tokens:
+        if token in website_text:
+            if token not in index:
+                index[token] = [{"title": title, "preview": description,"url":url}]
+            else:
+                index[token].append({"title": title, "preview": description,"url":url})
+            
+    anchor_tags = soup.select("a[href]")
+    
+    for anchor in anchor_tags:
+        hrefs.add(str(anchor['href']))
 
-        i += (j-i) + 1
-
-   #parse the href to normalize it and convert them to valid hrefs
+   # parse the href to normalize it and convert them to valid hrefs
     for href in list(hrefs):
         parsed_url = url_parser(href, base)
         if parsed_url and  valid_url(parsed_url, domain):
@@ -87,4 +100,5 @@ while (len(frontier) > 0 and remaining_pages > 0):
     remaining_pages -= 1
  
 
-print(frontier)
+print(index)
+# print(frontier)
