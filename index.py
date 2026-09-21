@@ -1,50 +1,17 @@
 import requests as r
 from bs4 import BeautifulSoup
-from utils.index import tokenize
+from utils.index import tokenize, url_parser, valid_url
 
 query= "Who is DannyK05"
 base = "https://github.com"
 domain = 'github.com'
-index = {}
+token_index = {}
+document_index = {}
 remaining_pages = 20
 frontier = ["https://github.com/DannyK05"]
 known_href = {"https://github.com/DannyK05"}
 
 
-def url_parser(href: str, base: str):
-    """
-    (str, str) -> str | None
-
-    Normalizes an href into an absolute URL when possible.
-
-    Root-relative URLs are combined with the base URL.
-    Absolute HTTP/HTTPS URLs are returned unchanged.
-    Unsupported or unrecognized href values return None.
-    """
-    
-    if len(href) == 0:
-        return None
-    elif href[0] == "/":
-        return base + href
-    elif href[0:3] == "http":
-        return href
-    else:
-        return None
-    
-    
-
-def valid_url(url:str, domain:str):
-    """
-    (str, str) => bool
-
-    Checks if a url is valid within the domain of crawler
-
-    """
-    url_sections = url.split("/")
-    if url_sections[2] == domain:
-        return True
-    else:
-        return False
 
 tokens:list[str] = tokenize(query)
 print(tokens,"tokens")
@@ -68,15 +35,23 @@ def crawl (url:str,frontier:list[str]):
     soup = BeautifulSoup(html_body,"html.parser")
     title = soup.title.string
     description = soup.select('meta[name="description"]')[0]['content']
+    document_id = 1
+
+    if len(document_index) > 0:
+         document_id = next(reversed(document_index)) + 1 #increments the last id used in the dict
+# todo: check if document exists before adding to the document index
+
+    document_index[document_id] = {"title": title, "preview": description,"url":url}
+
     website_text = soup.get_text(" ", strip=True).lower()
   
   
-    for token in tokens:
-        if token in website_text:
-            if token not in index:
-                index[token] = [{"title": title, "preview": description,"url":url}]
-            else:
-                index[token].append({"title": title, "preview": description,"url":url})
+    for word in tokenize(website_text):
+        if word in token_index:
+            token_index[word].append(document_id)
+        else:
+            token_index[word] = [document_id]
+            
             
     anchor_tags = soup.select("a[href]")
     
@@ -100,5 +75,24 @@ while (len(frontier) > 0 and remaining_pages > 0):
     remaining_pages -= 1
  
 
-print(index)
+# Result generation
+result = {}
+for token in tokens:
+    result[token] = []
+    if token in token_index:
+        for index in token_index[token]:
+            result[token].append(document_index[index])
+
+    
+
+print(token_index)
+print("\n------------------------------------------------------------------------\n")
+print(document_index)
+print("\n------------------------------------------------------------------------\n")
+print(result)
+print("\n------------------------------------------------------------------------\n")
+print(token_index['kolade'])
+print("\n------------------------------------------------------------------------\n")
+print(token_index['dannyk05'])
+
 # print(frontier)

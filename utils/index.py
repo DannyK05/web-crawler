@@ -1,5 +1,46 @@
+def url_parser(href: str, base: str):
+    """
+    (str, str) -> str | None
+
+    Normalizes an href into an absolute URL when possible.
+
+    Root-relative URLs are combined with the base URL.
+    Absolute HTTP/HTTPS URLs are returned unchanged.
+    Unsupported or unrecognized href values return None.
+    """
+    
+    if len(href) == 0:
+        return None
+    elif href[0] == "/":
+        return base + href
+    elif href[0:3] == "http":
+        return href
+    else:
+        return None
+    
+    
+
+def valid_url(url:str, domain:str):
+    """
+    (str, str) => bool
+
+    Checks if a url is valid within the domain of crawler
+
+    """
+    url_sections = url.split("/")
+    if url_sections[2] == domain:
+        return True
+    else:
+        return False
+
 
 def tokenize(query:str):
+    """
+    (str) => str[]
+    
+    Returns processed tokens from a string;
+    
+    """
     tokens = query.split(" ")
     processed_tokens = []
     for token in tokens:
