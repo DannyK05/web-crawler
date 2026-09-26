@@ -3,13 +3,14 @@ from collections import Counter
 import requests as r
 from bs4 import BeautifulSoup
 
+from crawler_types import Document, DocumentIndex, TokenDetails, TokenIndex
 from utils.index import rank, tokenize, url_parser, valid_url
 
 query = "Who is DannyK05"
 base = "https://github.com"
 domain = "github.com"
-token_index = {}
-document_index = {}
+token_index: TokenIndex = {}
+document_index: DocumentIndex = {}
 remaining_pages = 20
 frontier = ["https://github.com/DannyK05"]
 known_href = {"https://github.com/DannyK05"}
@@ -35,18 +36,25 @@ def crawl(url: str, frontier: list[str]):
 
     # parse the html_body to extract href values
     soup = BeautifulSoup(html_body, "html.parser")
-    title = soup.title.string
-    description = soup.select('meta[name="description"]')[0]["content"]
-    document_id = 1
+    title = ""
+    description = ""
+    
+    if soup.title and soup.title.string:
+        title = soup.title.string
 
-    if len(document_index) > 0:
-        document_id = (
-            next(reversed(document_index)) + 1
-        )  
+    if soup.select('meta[name="description"]')[0]["content"]:
+        description = soup.select('meta[name="description"]')[0]["content"]
+
+    # TODO: Add a handler for site without title tag and meta tags
+
+    document_id: int = 1
+
     # increments the last id used in the dict
-    # todo: check if document exists before adding to the document index
+    if len(document_index) > 0:
+        document_id = next(reversed(document_index)) + 1
 
-    document_index[document_id] = {"title": title, "preview": description, "url": url}
+    document: Document = {"title": title, "preview": str(description), "url": url}
+    document_index[document_id] = document
 
     website_text = soup.get_text(" ", strip=True).lower()
     words = tokenize(website_text)
@@ -54,11 +62,12 @@ def crawl(url: str, frontier: list[str]):
     word_count = Counter(words)
 
     for word in words:
-        token_details = {
+        token_details: TokenDetails = {
             "document_id": document_id,
             "document_size": document_size,
             "word_count": word_count[word],
         }
+
         if word in token_index:
             if token_details not in token_index[word]:
                 token_index[word].append(token_details)
@@ -104,7 +113,7 @@ print("\n-----------------------------------------------------------------------
 print(document_index)
 print(len(document_index))
 print("\n------------------------------------------------------------------------\n")
-result = rank(token_index,tokens, total_docs=len(document_index))
+result = rank(token_index, tokens, total_docs=len(document_index))
 print(result)
 # print("\n------------------------------------------------------------------------\n")
 # print(token_index["dannyk05"])

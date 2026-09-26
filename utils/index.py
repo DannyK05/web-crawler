@@ -1,5 +1,7 @@
 import math
 
+from crawler_types import TokenIndex
+
 
 def url_parser(href: str, base: str):
     """
@@ -35,7 +37,7 @@ def valid_url(url: str, domain: str):
 
 def tokenize(query: str):
     """
-    (str) => str[]
+    (str) => list[str]
 
     Returns processed tokens from a string;
 
@@ -52,7 +54,7 @@ def tokenize(query: str):
 
 
 def rank(
-    token_index: dict[str, list[dict[str, int]]], tokens: list[str], total_docs: int
+    token_index:TokenIndex , tokens: list[str], total_docs: int
 ):
     doc_ranking = {}
     rank_details = []
