@@ -93,26 +93,26 @@ def rank(
 
         details = cur.fetchall()
         print(details)
+
+     
         if len(details) != 0:
             for detail in details:
-                rank = (detail[2] / detail[3]) * (
-                    math.log10(total_docs / detail[3])
+                score = (detail[3] / detail[2]) * (
+                    math.log10(total_docs / len(details))
                 )
                 if detail[1] not in doc_ranking:
-                    doc_ranking[detail[1]] = rank
+                    doc_ranking[detail[1]] = score
                 else:
-                    doc_ranking[detail[1]] += rank
-
-    conn.commit()
+                    doc_ranking[detail[1]] += score
     cur.close()
     conn.close()
     for key, value in doc_ranking.items():
-        token_detail = {"document_id": key, "rank": value}
+        token_detail = {"document_id": key, "score": value}
         rank_details.append(token_detail)
 
     for i in range(len(rank_details)):
-        for j in range(i, len(rank_details) - i - 1):
-            if rank_details[j]["rank"] < rank_details[j + 1]["rank"]:
+        for j in range(len(rank_details) - i - 1):
+            if rank_details[j]["score"] < rank_details[j + 1]["score"]:
                 buff = rank_details[j]
                 rank_details[j] = rank_details[j + 1]
                 rank_details[j + 1] = buff
