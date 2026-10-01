@@ -92,7 +92,6 @@ def rank(
         )
 
         details = cur.fetchall()
-        print(details)
 
      
         if len(details) != 0:
@@ -104,8 +103,10 @@ def rank(
                     doc_ranking[detail[1]] = score
                 else:
                     doc_ranking[detail[1]] += score
+                    
     cur.close()
     conn.close()
+
     for key, value in doc_ranking.items():
         token_detail = {"document_id": key, "score": value}
         rank_details.append(token_detail)
@@ -120,11 +121,41 @@ def rank(
     return rank_details
 
 
-# def stemm (tokens:list[str]):
-#     result = []
-#     for token in tokens:
-#         if token.endswith("ed")
+def extract_ranked_documents(ranked_docs: list[dict]):
+    """
+    (list[dict]) => list[dict]
 
-result = rank(["who", "is", "dannyk05"])
+    Extracts the document details from the ranked documents
 
-print(result)
+    """
+    conn = psycopg.connect(
+        dbname=os.getenv("DB_NAME"),
+        user=os.getenv("DB_USER"),
+        password=os.getenv("DB_PASSWORD"),
+    )
+    cur = conn.cursor()
+
+    doc_details = []
+    for doc in ranked_docs:
+        cur.execute(
+            """
+            SELECT *
+            FROM documents
+            WHERE document_id = %s
+            """,
+            (doc["document_id"],),
+        )
+        details = cur.fetchone()
+        doc_detail = {
+            "document_id": details[0],
+            "title": details[1],
+            "preview": details[2],
+            "url": details[3],
+        }
+        doc_details.append(doc_detail)
+
+    cur.close()
+    conn.close()
+
+    return doc_details
+
