@@ -1,7 +1,10 @@
 import math
+import os
 
-from crawler_types import TokenIndex
+import psycopg
+from dotenv import load_dotenv
 
+load_dotenv()
 
 def url_parser(href: str, base: str):
     """
@@ -54,23 +57,56 @@ def tokenize(query: str):
 
 
 def rank(
-    token_index:TokenIndex , tokens: list[str], total_docs: int
+    tokens: list[str],
 ):
+    conn = psycopg.connect(
+        dbname=os.getenv("DB_NAME"),
+        user=os.getenv("DB_USER"),
+        password=os.getenv("DB_PASSWORD"),
+    )
+    cur = conn.cursor()
+
     doc_ranking = {}
     rank_details = []
 
-    for token in tokens:
-        if token in token_index:
-            for detail in token_index[token]:
-                rank = (detail["word_count"] / detail["document_size"]) * (
-                    math.log10(total_docs / len(token_index[token]))
-                )
-                if detail["document_id"] not in doc_ranking:
-                    doc_ranking[ detail["document_id"]] = rank
-                else:
-                     doc_ranking[ detail["document_id"]] += rank
+    cur.execute(
+        """
+        SELECT COUNT(*)
+        FROM documents
+        """
+    )
+    total_docs = cur.fetchone()[0]
 
-    for key,value in doc_ranking.items():
+    for token in tokens:
+        cur.execute(
+            """
+            SELECT *
+            FROM document_tokens
+            WHERE token_id = (
+            SELECT token_id
+            FROM tokens
+            WHERE token = %s
+            )
+            """,
+            (token,),
+        )
+
+        details = cur.fetchall()
+        print(details)
+        if len(details) != 0:
+            for detail in details:
+                rank = (detail[2] / detail[3]) * (
+                    math.log10(total_docs / detail[3])
+                )
+                if detail[1] not in doc_ranking:
+                    doc_ranking[detail[1]] = rank
+                else:
+                    doc_ranking[detail[1]] += rank
+
+    conn.commit()
+    cur.close()
+    conn.close()
+    for key, value in doc_ranking.items():
         token_detail = {"document_id": key, "rank": value}
         rank_details.append(token_detail)
 
@@ -80,6 +116,7 @@ def rank(
                 buff = rank_details[j]
                 rank_details[j] = rank_details[j + 1]
                 rank_details[j + 1] = buff
+
     return rank_details
 
 
@@ -87,3 +124,7 @@ def rank(
 #     result = []
 #     for token in tokens:
 #         if token.endswith("ed")
+
+result = rank(["who", "is", "dannyk05"])
+
+print(result)

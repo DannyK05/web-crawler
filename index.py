@@ -6,22 +6,49 @@ import requests as r
 from bs4 import BeautifulSoup
 from dotenv import load_dotenv
 
-from crawler_types import Document, DocumentIndex, TokenDetails, TokenIndex
-from utils.index import tokenize, url_parser, valid_url
+from crawler_types import Document
+from utils.index import rank, tokenize, url_parser, valid_url
 
 load_dotenv()
-
 
 
 query = "Who is DannyK05"
 base = "https://github.com"
 domain = "github.com"
-token_index: TokenIndex = {}
-document_index: DocumentIndex = {}
 remaining_pages = 20
 frontier = ["https://github.com/DannyK05"]
 known_href = {"https://github.com/DannyK05"}
 
+
+conn = psycopg.connect(
+    dbname=os.getenv("DB_NAME"),
+    user=os.getenv("DB_USER"),
+    password=os.getenv("DB_PASSWORD"),
+)
+cur = conn.cursor()
+cur.execute(
+    """
+        CREATE TABLE IF NOT EXISTS documents(
+            document_id SERIAL PRIMARY KEY,
+            title TEXT,
+            preview TEXT,
+            url TEXT UNIQUE
+        );
+
+        CREATE TABLE IF NOT EXISTS tokens(
+            token_id SERIAL PRIMARY KEY,
+            token TEXT UNIQUE
+        );
+
+        CREATE TABLE IF NOT EXISTS document_tokens(
+            token_id INT REFERENCES tokens(token_id),
+            document_id INT REFERENCES documents(document_id),
+            document_size INT,
+            token_count INT,
+            PRIMARY KEY (token_id, document_id)
+        );
+        """
+)
 
 tokens: list[str] = tokenize(query)
 print(tokens, "tokens")
@@ -32,36 +59,6 @@ def crawl(url: str, frontier: list[str]):
     hrefs: set[str] = set()
     response = r.get(url)
     html_body = response.text
-    conn = psycopg.connect(
-        dbname=os.getenv("DB_NAME"),
-        user=os.getenv("DB_USER"),
-        password=os.getenv("DB_PASSWORD")
-    )
-    cur = conn.cursor()
-    cur.execute(
-            """
-            CREATE TABLE IF NOT EXISTS documents(
-                document_id SERIAL PRIMARY KEY,
-                title TEXT,
-                preview TEXT,
-                url TEXT UNIQUE
-            );
-
-            CREATE TABLE IF NOT EXISTS tokens(
-                token_id SERIAL PRIMARY KEY,
-                token TEXT
-            );
-
-            CREATE TABLE IF NOT EXISTS document_tokens(
-                token_id SERIAL PRIMARY KEY,
-                document_id INT UNIQUE,
-                document_size INT,
-                token_count INT
-            );
-            """
-        )
-    
-    
 
     if not response.ok:
         remaining_pages += 1
@@ -84,61 +81,66 @@ def crawl(url: str, frontier: list[str]):
 
     # TODO: Add a handler for site without title tag and meta tags
 
-    document_id: int = 1
-
-    # increments the last id used in the dict
-    if len(document_index) > 0:
-        document_id = next(reversed(document_index)) + 1
-
     document: Document = {"title": title, "preview": str(description), "url": url}
-    document_index[document_id] = document
 
     cur.execute(
-            """
-            INSERT INTO documents (document_id, title, preview, url) 
-            VALUES (%s, %s, %s, %s)
+        """
+            INSERT INTO documents (title, preview, url) 
+            VALUES (%s, %s, %s)
             ON CONFLICT (url) DO NOTHING
+            RETURNING document_id;
             """,
-            (
-                document_id,
-                document["title"],
-                document["preview"],
-                document["url"]
-            )
+        (document["title"], document["preview"], document["url"]),
     )
+    if cur.rowcount > 0:
+        document_id = cur.fetchone()[0]
+    else:
+        cur.execute(
+            """
+            SELECT document_id
+            FROM documents
+            WHERE url = %s;
+            """,
+            (document["url"],)
+        )
+        document_id = cur.fetchone()[0]
 
-   
-    
     website_text = soup.get_text(" ", strip=True).lower()
     words = tokenize(website_text)
     document_size = len(words)
     word_count = Counter(words)
 
-    for word in words:
-        # cur.execute(
-        #         """
-        #         INSERT INTO document_tokens (token_id, document_id, document_size, token_count) 
-        #         VALUES (%s, %s, %s, %s)
-        #         ON CONFLICT (document_id) DO NOTHING
-        #         """,
-        #         (
-        #             word,
-        #             document_id,
-        #             document_size,
-        #             word_count[word]
-        #         )
-        # )
-        token_details: TokenDetails = {
-            "document_id": document_id,
-            "document_size": document_size,
-            "word_count": word_count[word],
-        }
-
-        if word in token_index:
-            if token_details not in token_index[word]:
-                token_index[word].append(token_details)
+    for word,count in word_count.items():
+        cur.execute(
+            """
+                INSERT INTO tokens (token) 
+                VALUES (%s)
+                ON CONFLICT (token) DO NOTHING
+                RETURNING token_id;
+                """,
+            (word,),
+        )
+        
+        if cur.rowcount > 0:
+            token_id = cur.fetchone()[0]
         else:
-            token_index[word] = [token_details]
+            cur.execute(
+                """
+                SELECT token_id
+                FROM tokens
+                WHERE token = %s
+                """,
+                (word,)
+            )
+            token_id = cur.fetchone()[0]
+        # print(token_id, document_id, document_size, count)
+        cur.execute(
+            """
+                INSERT INTO document_tokens (token_id, document_id, document_size, token_count) 
+                VALUES (%s, %s, %s, %s);
+                """,
+            (token_id, document_id, document_size, count),
+        )
 
     anchor_tags = soup.select("a[href]")
 
@@ -156,9 +158,8 @@ def crawl(url: str, frontier: list[str]):
             frontier.append(parsed_url)
             known_href.add(parsed_url)
 
-    conn.commit()
-    cur.close()
-    conn.close()
+
+
 
 # Crawling loop
 while len(frontier) > 0 and remaining_pages > 0:
@@ -167,7 +168,9 @@ while len(frontier) > 0 and remaining_pages > 0:
     crawl(next_href, frontier)
     remaining_pages -= 1
 
-
+conn.commit()
+cur.close()
+conn.close()
 # Result generation
 # result = {}
 # for token in tokens:
@@ -182,12 +185,9 @@ while len(frontier) > 0 and remaining_pages > 0:
 # print(document_index)
 # print(len(document_index))
 # print("\n------------------------------------------------------------------------\n")
-# result = rank(token_index, tokens, total_docs=len(document_index))
-# print(result)
+result = rank(tokens)
+print(result)
 # print("\n------------------------------------------------------------------------\n")
 # print(token_index["dannyk05"])
 
 # print(frontier)
-
-    
-
