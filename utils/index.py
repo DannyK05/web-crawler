@@ -1,10 +1,5 @@
 import math
-import os
 
-import psycopg
-from dotenv import load_dotenv
-
-load_dotenv()
 
 def url_parser(href: str, base: str):
     """
@@ -57,15 +52,9 @@ def tokenize(query: str):
 
 
 def rank(
+    cur,
     tokens: list[str],
 ):
-    conn = psycopg.connect(
-        dbname=os.getenv("DB_NAME"),
-        user=os.getenv("DB_USER"),
-        password=os.getenv("DB_PASSWORD"),
-    )
-    cur = conn.cursor()
-
     doc_ranking = {}
     rank_details = []
 
@@ -93,7 +82,6 @@ def rank(
 
         details = cur.fetchall()
 
-     
         if len(details) != 0:
             for detail in details:
                 score = (detail[3] / detail[2]) * (
@@ -103,9 +91,6 @@ def rank(
                     doc_ranking[detail[1]] = score
                 else:
                     doc_ranking[detail[1]] += score
-                    
-    cur.close()
-    conn.close()
 
     for key, value in doc_ranking.items():
         token_detail = {"document_id": key, "score": value}
@@ -121,20 +106,13 @@ def rank(
     return rank_details
 
 
-def extract_ranked_documents(ranked_docs: list[dict]):
+def extract_ranked_documents(cur, ranked_docs: list[dict]):
     """
     (list[dict]) => list[dict]
 
     Extracts the document details from the ranked documents
 
     """
-    conn = psycopg.connect(
-        dbname=os.getenv("DB_NAME"),
-        user=os.getenv("DB_USER"),
-        password=os.getenv("DB_PASSWORD"),
-    )
-    cur = conn.cursor()
-
     doc_details = []
     for doc in ranked_docs:
         cur.execute(
@@ -154,8 +132,4 @@ def extract_ranked_documents(ranked_docs: list[dict]):
         }
         doc_details.append(doc_detail)
 
-    cur.close()
-    conn.close()
-
     return doc_details
-
